@@ -1,0 +1,5 @@
+{
+  "name": "VidAI",
+  "description": "VidAI: An AI-powered application for video understanding. Upload videos, ask questions, and get insightful answers ('vidai' in Tamil) using the Gemini API.",
+  "requestFramePermissions": []
+}
