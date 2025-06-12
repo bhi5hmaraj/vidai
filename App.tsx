@@ -8,6 +8,7 @@ import { ChatHistory } from './components/ChatHistory';
 import { ChatInput } from './components/ChatInput';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { ProgressBar } from './components/ProgressBar';
+import { ModelSelector, ModelOption } from './components/ModelSelector';
 import { uploadVideo, UploadedVideoFile as GeminiUploadedVideoFile } from './services/geminiService';
 import { generateVideoChatMessage } from './services/geminiService';
 import { ChatMessage as AppChatMessage } from './types';
@@ -20,6 +21,11 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false); // For video upload & processing
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [selectedModel, setSelectedModel] = useState<ModelOption>('gemini-2.5-flash-preview-04-17');
+
+  const handleModelChange = (model: ModelOption) => {
+    setSelectedModel(model);
+  };
 
   const handleVideoUpload = useCallback(async (file: File) => {
     setIsUploading(true);
@@ -39,7 +45,8 @@ const App: React.FC = () => {
       setUploadProgress(100); 
 
       const summaryPrompt = "Please summarize this video in detail, highlighting key events, objects, and any spoken content if applicable.";
-      await handleSendMessage(summaryPrompt, uploadedFileInfo, true); 
+      // Use the currently selected model for the initial summary
+      await handleSendMessage(summaryPrompt, uploadedFileInfo, selectedModel, true); 
 
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Unknown error during video upload/processing.';
@@ -50,10 +57,16 @@ const App: React.FC = () => {
     } finally {
       setIsUploading(false);
     }
-  }, []);
+  }, [selectedModel]); // Added selectedModel to dependency array
 
-  const handleSendMessage = useCallback(async (prompt: string, currentVideoFile?: GeminiUploadedVideoFile | null, initialSummary: boolean = false) => {
+  const handleSendMessage = useCallback(async (
+    prompt: string, 
+    currentVideoFile?: GeminiUploadedVideoFile | null, 
+    modelToUse?: ModelOption,
+    initialSummary: boolean = false
+  ) => {
     const videoToUse = currentVideoFile || geminiVideoFile;
+    const currentModel = modelToUse || selectedModel;
     if (!videoToUse || !prompt.trim()) return;
 
     if (!initialSummary) {
@@ -70,7 +83,7 @@ const App: React.FC = () => {
     setError(null);
 
     try {
-      const aiResponseText = await generateVideoChatMessage(videoToUse, prompt);
+      const aiResponseText = await generateVideoChatMessage(videoToUse, prompt, currentModel);
       const newAiMessage: AppChatMessage = {
         id: crypto.randomUUID(),
         sender: 'ai',
@@ -91,14 +104,14 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [geminiVideoFile]);
+  }, [geminiVideoFile, selectedModel]); // Added selectedModel to dependency array
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-900 text-gray-100">
       <Header />
       <main className="flex-grow container mx-auto p-4 flex flex-col lg:flex-row gap-6">
         <div className="lg:w-1/2 flex flex-col space-y-4">
-          <VideoUpload onVideoUpload={handleVideoUpload} disabled={isUploading} />
+          <VideoUpload onVideoUpload={handleVideoUpload} disabled={isUploading || isLoading} />
           {isUploading && (
             <div className="flex flex-col items-center justify-center p-4 bg-gray-800 rounded-lg">
               <ProgressBar progress={uploadProgress} />
@@ -125,6 +138,11 @@ const App: React.FC = () => {
               The name also subtly alludes to the Tamil word <span className="font-semibold">'vidai' (விடை)</span>, meaning 'answer' or 'solution', reflecting the app's ability to provide insightful answers derived from your video content.
             </p>
           </div>
+          <ModelSelector 
+            currentModel={selectedModel} 
+            onModelChange={handleModelChange}
+            disabled={isUploading || isLoading}
+          />
         </div>
         <div className="lg:w-1/2 flex flex-col bg-gray-800 rounded-lg shadow-xl h-[65vh] lg:h-[calc(100vh-195px)]">
           <div className="p-4 border-b border-gray-700 flex-shrink-0">
@@ -142,7 +160,7 @@ const App: React.FC = () => {
               <p>{error}</p>
             </div>
           )}
-          <ChatInput onSendMessage={(msg) => handleSendMessage(msg)} disabled={!geminiVideoFile || isLoading || isUploading} />
+          <ChatInput onSendMessage={(msg) => handleSendMessage(msg, geminiVideoFile, selectedModel)} disabled={!geminiVideoFile || isLoading || isUploading} />
         </div>
       </main>
       <Footer />

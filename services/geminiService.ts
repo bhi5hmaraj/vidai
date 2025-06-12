@@ -1,16 +1,38 @@
 
 import { GoogleGenAI, GenerateContentResponse, Content, File as GeminiSDKFile } from "@google/genai";
 
-// API_KEY is obtained exclusively from process.env.API_KEY.
-// Assume this variable is pre-configured, valid, and accessible.
-const API_KEY = process.env.API_KEY;
+// API_KEY retrieval logic updated for flexibility across environments
+let apiKeyResolved: string | undefined;
+
+try {
+  // 1. Try process.env.GEMINI_API_KEY
+  if (typeof process !== 'undefined' && process.env && typeof process.env.GEMINI_API_KEY === 'string') {
+    apiKeyResolved = process.env.GEMINI_API_KEY;
+  }
+
+  // 2. Else, try process.env.API_KEY
+  if (!apiKeyResolved && typeof process !== 'undefined' && process.env && typeof process.env.API_KEY === 'string') {
+    apiKeyResolved = process.env.API_KEY;
+  }
+
+  // 3. Else, try import.meta.env.VITE_GEMINI_API_KEY (for Vite environments)
+  // Ensure Vite client types are included in tsconfig.json (e.g., "types": ["vite/client"]) for proper import.meta.env typing
+  if (!apiKeyResolved && typeof import.meta !== 'undefined' && (import.meta as any).env && typeof (import.meta as any).env.VITE_GEMINI_API_KEY === 'string') {
+    apiKeyResolved = (import.meta as any).env.VITE_GEMINI_API_KEY;
+  }
+} catch (e) {
+  console.error("[geminiService.ts Global] Error accessing API_KEY from environment variables:", e);
+  // apiKeyResolved will remain undefined.
+  // The GoogleGenAI constructor or subsequent API calls will handle this as per guidelines (i.e., they will fail).
+}
+
+const API_KEY = apiKeyResolved;
 
 // Initialize GoogleGenAI client.
-// If API_KEY is undefined or invalid, this constructor will likely throw an error or
-// subsequent API calls will fail, which is the expected behavior as per guidelines.
+// If API_KEY is undefined or invalid, this constructor might not immediately throw an error,
+// but subsequent API calls will fail. This is the expected behavior as per guidelines.
 // The application must not prompt for the key or provide UI to set it.
 const ai = new GoogleGenAI({ apiKey: API_KEY });
-const LLM_MODEL = "gemini-2.5-flash-preview-04-17";
 
 export interface UploadedVideoFile {
   uri: string;
@@ -48,8 +70,8 @@ export async function uploadVideo(
     console.error("Error during initial video upload to Gemini:", error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     // Specific error handling for API key issues should be caught by the SDK or be generic.
-    if (errorMessage.includes("API key not valid") || errorMessage.includes("api_key")) {
-        throw new Error(`API Key is invalid or missing. Please ensure it is correctly configured in the environment. Original error: ${errorMessage}`);
+    if (errorMessage.includes("API key not valid") || errorMessage.includes("api_key") || errorMessage.includes("API_KEY_INVALID")) {
+        throw new Error(`API Key is invalid, missing, or not authorized for this service. Please ensure it is correctly configured in the environment. Original error: ${errorMessage}`);
     }
     throw new Error(`Failed to initiate video upload: ${errorMessage}`);
   }
@@ -105,7 +127,8 @@ export async function uploadVideo(
 
 export async function generateVideoChatMessage(
   videoFile: UploadedVideoFile,
-  prompt: string
+  prompt: string,
+  modelName: string 
 ): Promise<string> {
   // If API_KEY was not valid, ai.models.generateContent will fail.
   try {
@@ -122,16 +145,16 @@ export async function generateVideoChatMessage(
     const contents: Content[] = [{ role: "user", parts: [videoPart, textPart] }];
 
     const response: GenerateContentResponse = await ai.models.generateContent({
-      model: LLM_MODEL,
+      model: modelName, 
       contents: contents, 
     });
 
     return response.text;
   } catch (error) {
-    console.error("Error generating chat message from Gemini:", error);
+    console.error(`Error generating chat message from Gemini with model ${modelName}:`, error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-    if (errorMessage.includes("API key not valid") || errorMessage.includes("api_key")) {
-        throw new Error(`API Key is invalid or missing. Please ensure it is correctly configured in the environment. Original error: ${errorMessage}`);
+    if (errorMessage.includes("API key not valid") || errorMessage.includes("api_key") || errorMessage.includes("API_KEY_INVALID")) {
+        throw new Error(`API Key is invalid, missing, or not authorized for this service. Please ensure it is correctly configured in the environment. Original error: ${errorMessage}`);
     }
     if (errorMessage.includes("FAILED_PRECONDITION") && errorMessage.includes("not in an ACTIVE state")) {
         throw new Error(`Failed to use video: File is not ready. This might indicate an issue with the upload or processing status. ${errorMessage}`);
@@ -139,10 +162,10 @@ export async function generateVideoChatMessage(
     if (errorMessage.toLowerCase().includes("quota") || (error as any)?.code === 429) {
         throw new Error("API request failed due to quota limits. Please check your Gemini API plan and usage.");
     }
-    if (errorMessage.includes("model") && (errorMessage.includes("permission denied") || errorMessage.includes("not found"))) {
-        throw new Error(`The model "gemini-2.5-flash-preview-04-17" may not be available or you lack permissions. Check model name and API key permissions. Original error: ${errorMessage}`);
+    if (errorMessage.includes("model") && (errorMessage.includes("permission denied") || errorMessage.includes("not found") || errorMessage.includes("does not exist"))) {
+        throw new Error(`The model "${modelName}" may not be available, does not exist, or you lack permissions. Check model name and API key permissions. Original error: ${errorMessage}`);
     }
 
-    throw new Error(`Failed to get response from AI: ${errorMessage}`);
+    throw new Error(`Failed to get response from AI using model ${modelName}: ${errorMessage}`);
   }
 }
