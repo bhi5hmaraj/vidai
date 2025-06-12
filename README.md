@@ -9,4 +9,3 @@ A simple project vibe-coded using AI studio build mode. Currently you can upload
 
 
 The name  subtly alludes to the Tamil word 'vidai' (விடை), meaning 'answer' or 'solution', reflecting the app's ability to provide insightful answers derived from your video content.
-
