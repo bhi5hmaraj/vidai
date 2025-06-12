@@ -10,6 +10,7 @@ const API_KEY = process.env.API_KEY;
 // subsequent API calls will fail, which is the expected behavior as per guidelines.
 // The application must not prompt for the key or provide UI to set it.
 const ai = new GoogleGenAI({ apiKey: API_KEY });
+const LLM_MODEL = "gemini-2.5-flash-preview-04-17";
 
 export interface UploadedVideoFile {
   uri: string;
@@ -121,7 +122,7 @@ export async function generateVideoChatMessage(
     const contents: Content[] = [{ role: "user", parts: [videoPart, textPart] }];
 
     const response: GenerateContentResponse = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-04-17", 
+      model: LLM_MODEL,
       contents: contents, 
     });
 
